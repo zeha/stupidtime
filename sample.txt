@@ -1,0 +1,16 @@
+deffee:130
+
+== Some Project
+2015/03/19        08:30-10:30 14:00-14:45 Work
+2015/03/20        11:00-11:30 Coffee panel
+total:?
+
+== Personal time
+-- can't bill myself
+fee:0
+
+2015/02/19        1h Sleep
+2015/02/20        12:00-13:30 Great food
+total:2.0 -- sample of wrong manually calculated value
+
+== EOF
