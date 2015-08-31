@@ -1,9 +1,9 @@
 #!/usr/bin/env python
 import sys
+import datetime
 
 with_colors = True
 
-lines = open(sys.argv[1], 'r').readlines()
 if '--no-color' in sys.argv:
     with_colors = False
 
@@ -91,149 +91,172 @@ def is_an_hour(s):
     return False
 
 
-group = None
-group_config = None
-group_config_printed = None
-default_hourly_fee = None
-total_hours = None
+week_hours = {}
 
+def parse_file_lines(lines):
+    global week_hours
+    group = None
+    group_config = None
+    group_config_printed = None
+    default_hourly_fee = None
+    total_hours = None
 
-for line in lines:
-    line = line.strip()
-    if len(line) == 0:
-        # empty line
-        continue
-    if line.startswith('--'):
-        # comment line
-        print line
-        continue
+    for line in lines:
+        line = line.strip()
+        if len(line) == 0:
+            # empty line
+            continue
+        if line.startswith('--'):
+            # comment line
+            print line
+            continue
 
-    if line.startswith('== '):
-        # header -> starts new group
-        if total_hours is not None and total_hours > 0:
-            print_total(total_hours, group_config, "(interim total)")
+        if line.startswith('== '):
+            # header -> starts new group
+            if total_hours is not None and total_hours > 0:
+                print_total(total_hours, group_config, "(interim total)")
 
-        group_config = {
-            'fee': default_hourly_fee
-        }
-        group_config_printed = False
-        total_hours = 0
-        group = ' '.join(line.split(' ')[1:])
-        print ""
-        print group
-        print '=' * len(group)
-
-    elif line.startswith('total:'):
-        # total/sum line
-        # handle comment
-        line = line.split(' --')
-        if len(line) > 1:
-            comment = line[1]
-        else:
-            comment = ""
-        line = line[0]
-
-        val = line.split(':')[1]
-        if val == '?':
-            # calculate plx!
-            pass
-        else:
-            val = float(val)
-            if val != total_hours:
-                print '--', line
-                err('calculated total %s does not match pre-calculated value %s' % (total_hours, val))
-
-        print_total(total_hours, group_config, comment)
-
-        # start new sum group
-        total_hours = 0
-
-    elif line.startswith('fee:'):
-        # config
-        group_config['fee'] = parse_config_int(line, 'fee')
-
-    elif line.startswith('deffee:'):
-        # config
-        default_hourly_fee = parse_config_int(line, 'deffee')
-        print 'deffee:%d' % (default_hourly_fee)
-
-    elif '/' in line:
-        if not group_config_printed:
-            for k, v in group_config.items():
-                print '%s:%s' % (k, v)
-            group_config_printed = True
+            group_config = {
+                'fee': default_hourly_fee
+            }
+            group_config_printed = False
+            total_hours = 0
+            group = ' '.join(line.split(' ')[1:])
             print ""
+            print group
+            print '=' * len(group)
 
-        line = line.split()
-        print '--', ' '.join(line)
-        if '/' in line[0]:
-            date = line[0]
-            line = line[1:]
-        elif '/' in line[1]:
-            date = line[1]
-            line = [line[0]] + line[2:]
-        else:
-            err('no date found')
-
-        hours_pre = []
-        consumed = []
-        for part in line:
-            # precalculated hours
-            if is_an_hour(part):
-                # strip 'h'
-                if part.endswith('h'):
-                    part = part[:-1]
-                consumed.append(part)
-                flag = None
-                if part.startswith('F'):
-                    flag = 'F'
-                    part = part[1:]
-                hours_pre.append((float(part), flag))
-            elif part == '+':
-                # ignore
-                consumed.append(part)
+        elif line.startswith('total:'):
+            # total/sum line
+            # handle comment
+            line = line.split(' --')
+            if len(line) > 1:
+                comment = line[1]
             else:
-                # done with hours
-                break
-        line = line[len(consumed):]
-        consumed = []
+                comment = ""
+            line = line[0]
 
-        intervals = []
-        for interval in line:
-            if '-' in interval and startswithdigit(interval):
-                consumed.append(interval)
-                intervals.append(interval.split('-'))
+            val = line.split(':')[1]
+            if val == '?':
+                # calculate plx!
+                pass
             else:
-                # done with intervals
-                break
-        line = line[len(consumed):]
-        consumed = []
+                val = float(val)
+                if val != total_hours:
+                    print '--', line
+                    err('calculated total %s does not match pre-calculated value %s' % (total_hours, val))
 
-        description = ' '.join(line)
-        hours = sum([sum_interval(interval) for interval in intervals])
-        precalculated = sum_hours_pre(hours_pre)
-        if len(intervals) == 0:
-            hours = precalculated
-        elif len(hours_pre) == 0:
-            pass
+            print_total(total_hours, group_config, comment)
+
+            # start new sum group
+            total_hours = 0
+
+        elif line.startswith('fee:'):
+            # config
+            group_config['fee'] = parse_config_int(line, 'fee')
+
+        elif line.startswith('deffee:'):
+            # config
+            default_hourly_fee = parse_config_int(line, 'deffee')
+            print 'deffee:%d' % (default_hourly_fee)
+
+        elif '/' in line:
+            if not group_config_printed:
+                for k,v in group_config.items():
+                    print '%s:%s' % (k, v)
+                group_config_printed = True
+                print ""
+
+            line = line.split()
+            print '--', ' '.join(line)
+            if '/' in line[0]:
+                date = line[0]
+                line = line[1:]
+            elif '/' in line[1]:
+                date = line[1]
+                line = [line[0]] + line[2:]
+            else:
+                err('no date found')
+
+            date_parsed = datetime.datetime.strptime(date, '%Y/%m/%d').date()
+
+            hours_pre = []
+            consumed = []
+            for part in line:
+                # precalculated hours
+                if is_an_hour(part):
+                    # strip 'h'
+                    if part.endswith('h'):
+                        part = part[:-1]
+                    consumed.append(part)
+                    flag = None
+                    if part.startswith('F'):
+                        flag = 'F'
+                        part = part[1:]
+                    hours_pre.append((float(part), flag))
+                elif part == '+':
+                    # ignore
+                    consumed.append(part)
+                else:
+                    # done with hours
+                    break
+            line = line[len(consumed):]
+            consumed = []
+
+            intervals = []
+            for interval in line:
+                if '-' in interval and startswithdigit(interval):
+                    consumed.append(interval)
+                    intervals.append(interval.split('-'))
+                else:
+                    # done with intervals
+                    break
+            line = line[len(consumed):]
+            consumed = []
+
+            description = ' '.join(line)
+            hours = sum([sum_interval(interval) for interval in intervals])
+            precalculated = sum_hours_pre(hours_pre)
+            if len(intervals) == 0:
+                hours = precalculated
+            elif len(hours_pre) == 0:
+                pass
+            else:
+                pre = sum_hours_pre(hours_pre, ignore_flags=True)
+                if hours != pre:
+                    err('calculated hours (%s) do not match pre-calculated hours (%s)' % (hours, pre))
+                # take hours from precalculated data, as they might have flags!
+                hours = precalculated
+            if hours == 0:
+                err("zero hours")
+
+            print date, hours, description
+            total_hours += hours
+            yearweek = '%sW%02d' % date_parsed.isocalendar()[0:2]
+            week_hours.setdefault(yearweek, 0)
+            week_hours[yearweek] += hours
+
         else:
-            pre = sum_hours_pre(hours_pre, ignore_flags=True)
-            if hours != pre:
-                err('calculated hours (%s) do not match pre-calculated hours (%s)' % (hours, pre))
-            # take hours from precalculated data, as they might have flags!
-            hours = precalculated
-        if hours == 0:
-            err("zero hours")
-
-        print date, hours, description
-        total_hours += hours
-
-    else:
-        have_errors = True
-        err('line "%s" not understood' % line)
+            have_errors = True
+            err('line "%s" not understood' % line)
 
 
 if have_errors:
     print ""
     err("Errors during processing of this file!")
     sys.exit(1)
+
+
+for arg in sys.argv[1:]:
+    if arg.startswith('--'):
+        continue
+    with open(arg, 'r') as fh:
+        parse_file_lines(fh.readlines())
+
+print "-- Hours per week worked:"
+overall_total_hours = 0
+for yearweek in sorted(week_hours.keys()):
+    hours = week_hours[yearweek]
+    print "-- %s: %s" % (yearweek, hours)
+    overall_total_hours += hours
+print "-- Overall total: %s   Avg Per Week: %s" % (overall_total_hours, overall_total_hours / len(week_hours))
